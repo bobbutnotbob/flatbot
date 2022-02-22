@@ -26,38 +26,37 @@ async def shopping_help(ctx):
 @shopping_list.command(name='add')
 async def add_to_shopping_list(ctx, *, items):
     with open('shopping_list.txt', 'r+') as shopping_list:
-        lc = len(shopping_list.readlines()) + 1
+        lines = shopping_list.readlines() 
+        lc = len(lines) + 1
         items = items.split(',')
         for item in items:
-            item = item.strip()
-            regular_syntax = f'{lc}. {item}\n'
-            md_syntax = f'- [] {lc}. {item}\n'
-            shopping_list.write(regular_syntax)
-            lc += 1
+            if item in lines:
+                await ctx.send(f'`{item} ')
+            else:
+                item = item.strip()
+                shopping_list.write(item + '\n')
+                lc += 1
 
     await ctx.send(f'+ Added `{len(items)}` items to the shopping list')
     
 @shopping_list.command(name='remove', aliases=['rm'])
-async def remove_from_shopping_list(ctx, line_to_rm: int):
-    with open('shopping_list.txt', 'r') as shopping_list:
-        lines = shopping_list.readlines()
+async def remove_from_shopping_list(ctx, item_to_rm: int):
+    with open('shopping_list.txt', 'r') as sl_read:
+        shopping_list = sl_read.readlines()
 
     index = 1
-    new_line_num = 0
-    with open('shopping_list.txt', 'w') as new_shopping_list:
-        for line in lines:
-            print(line, index)
-            if index == line_to_rm:
-                item = line[3:]
+    with open('shopping_list.txt', 'w') as sl_write:
+        for item in shopping_list:
+            if index == item_to_rm:
+                removed_item = item
+                pass
 
             else:
-                new_line_num += 1
-                line = line[3:]
-                new_shopping_list.write(f'{new_line_num}. {line}')
+                sl_write.write(item)
 
             index += 1
                 
-    await ctx.send(f'— Removed `{item}` from the shopping list')
+    await ctx.send(f'— Removed `{removed_item}` from the shopping list')
             
 @shopping_list.command(name='clear')
 async def clear_shopping_list(ctx):
@@ -69,9 +68,13 @@ async def clear_shopping_list(ctx):
 @shopping_list.command(name='print')
 async def print_shopping_list(ctx):
     with open('shopping_list.txt', 'r') as shopping_list:
-        data = shopping_list.read()
+        data = shopping_list.readlines()
+        numbered_list = ""
+        for i in range(len(data)):
+            numbered_line = f'{i + 1}. {data[i]}'
+            numbered_list += numbered_line
 
-    await ctx.send(f'```\n{data}```')
+    await ctx.send(f'```\n{numbered_list}```')
 
 # ----------------------------------- #
 #           Error Handling            #
