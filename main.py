@@ -11,13 +11,15 @@ bot = discord.Bot(debug_guilds=[798358772996243457])
 
 @bot.event
 async def on_ready():
-    print(f'{bot.user.name} has connected to Discord!')
+    await print(bot.user.name)
+
+# Intitialise command groups
+shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
+bank_transfer = bot.create_group('bank-transfer', 'Commands for managing bank transfers')
 
 # -------------------------------------- #
 #        Shopping List Commands          #
 # -------------------------------------- #
-
-shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
 
 @shopping_list.command(description='Display bot help')
 async def help(ctx):
@@ -80,7 +82,9 @@ async def print(ctx):
 #        Bank Transfer Commands          #
 # -------------------------------------- #
 
-
+@bank_transfer.command(description='Request payment from flat members')
+async def request(ctx, target: discord.abc.Mentionable, amount: float):
+    await ctx.respond(f'Requested **${amount}** from {target.mention}.')
 
 # ----------------------------------- #
 #           Error Handling            #
