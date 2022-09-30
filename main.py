@@ -19,17 +19,16 @@ async def on_ready():
 
 shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
 
-@shopping_list.command(name='help', description='Display bot help')
-async def shopping_help(ctx):
+@shopping_list.command(description='Display bot help')
+async def help(ctx):
     await ctx.respond('I don\'t work for whatever reason')
 
-@shopping_list.command(name='add', description='Add an item to the shopping list')
-async def add_to_shopping_list(ctx, *, items):
+@shopping_list.command(description='Add an item to the shopping list')
+async def add(ctx, *, items):
     with open('shopping_list.txt', 'r+') as shopping_list:
-        print("Hello!")
         lines = shopping_list.readlines() 
         lc = len(lines) + 1
-        items = items.split(',')
+        print(items, lines)
         for item in items:
             if item in lines:
                 await ctx.respond(f'`{item} ')
@@ -40,8 +39,8 @@ async def add_to_shopping_list(ctx, *, items):
 
     await ctx.respond(f'+ Added `{len(items)}` items to the shopping list')
     
-@shopping_list.command(name='remove', description='Remove an item from the shopping list')
-async def remove_from_shopping_list(ctx, item_to_rm: int):
+@shopping_list.command(description='Remove an item from the shopping list')
+async def remove(ctx, item_to_rm: int):
     with open('shopping_list.txt', 'r') as sl_read:
         shopping_list = sl_read.readlines()
 
@@ -59,15 +58,15 @@ async def remove_from_shopping_list(ctx, item_to_rm: int):
                 
     await ctx.respond(f'— Removed `{removed_item}` from the shopping list')
             
-@shopping_list.command(name='clear', description='Clear the shopping list')
-async def clear_shopping_list(ctx):
+@shopping_list.command(description='Clear the shopping list')
+async def clear(ctx):
     with open('shopping_list.txt', 'w') as shopping_list:
         shopping_list.write('')
 
     await ctx.respond('Cleared the shopping list')
 
-@shopping_list.command(name='print', description='Print the shopping list')
-async def print_shopping_list(ctx):
+@shopping_list.command(description='Print the shopping list')
+async def print(ctx):
     with open('shopping_list.txt', 'r') as shopping_list:
         data = shopping_list.readlines()
         numbered_list = ""
