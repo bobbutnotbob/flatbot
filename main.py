@@ -1,11 +1,13 @@
 import os
-from discord.ext import commands
+import sys
+import traceback
+import discord
 from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-bot = commands.Bot(command_prefix='!')
+bot = discord.Bot(debug_guilds=[798358772996243457])
 
 @bot.event
 async def on_ready():
@@ -15,31 +17,30 @@ async def on_ready():
 #        Shopping List Commands          #
 # -------------------------------------- #
 
-@bot.group(name='shopping-list', aliases=['sl'], invoke_without_command=True)
-async def shopping_list(ctx):
-    await ctx.send('parent')
+shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
 
-@shopping_list.command(name='help', aliases=['h'])
+@shopping_list.command(name='help', description='Display bot help')
 async def shopping_help(ctx):
-    await ctx.send('I don\'t work for whatever reason')
+    await ctx.respond('I don\'t work for whatever reason')
 
-@shopping_list.command(name='add')
+@shopping_list.command(name='add', description='Add an item to the shopping list')
 async def add_to_shopping_list(ctx, *, items):
     with open('shopping_list.txt', 'r+') as shopping_list:
+        print("Hello!")
         lines = shopping_list.readlines() 
         lc = len(lines) + 1
         items = items.split(',')
         for item in items:
             if item in lines:
-                await ctx.send(f'`{item} ')
+                await ctx.respond(f'`{item} ')
             else:
                 item = item.strip()
                 shopping_list.write(item + '\n')
                 lc += 1
 
-    await ctx.send(f'+ Added `{len(items)}` items to the shopping list')
+    await ctx.respond(f'+ Added `{len(items)}` items to the shopping list')
     
-@shopping_list.command(name='remove', aliases=['rm'])
+@shopping_list.command(name='remove', description='Remove an item from the shopping list')
 async def remove_from_shopping_list(ctx, item_to_rm: int):
     with open('shopping_list.txt', 'r') as sl_read:
         shopping_list = sl_read.readlines()
@@ -56,16 +57,16 @@ async def remove_from_shopping_list(ctx, item_to_rm: int):
 
             index += 1
                 
-    await ctx.send(f'— Removed `{removed_item}` from the shopping list')
+    await ctx.respond(f'— Removed `{removed_item}` from the shopping list')
             
-@shopping_list.command(name='clear')
+@shopping_list.command(name='clear', description='Clear the shopping list')
 async def clear_shopping_list(ctx):
     with open('shopping_list.txt', 'w') as shopping_list:
         shopping_list.write('')
 
-    await ctx.send('Cleared the shopping list')
+    await ctx.respond('Cleared the shopping list')
 
-@shopping_list.command(name='print')
+@shopping_list.command(name='print', description='Print the shopping list')
 async def print_shopping_list(ctx):
     with open('shopping_list.txt', 'r') as shopping_list:
         data = shopping_list.readlines()
@@ -74,11 +75,15 @@ async def print_shopping_list(ctx):
             numbered_line = f'{i + 1}. {data[i]}'
             numbered_list += numbered_line
 
-    await ctx.send(f'```\n{numbered_list}```')
+    await ctx.respond(f'```\n{numbered_list}```')
+
+# -------------------------------------- #
+#        Bank Transfer Commands          #
+# -------------------------------------- #
+
+
 
 # ----------------------------------- #
 #           Error Handling            #
 # ----------------------------------- #
-
-# --- Shopping List --- #
 bot.run(TOKEN)
