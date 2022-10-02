@@ -7,11 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-bot = discord.Bot(debug_guilds=[798358772996243457])
+bot = discord.Bot(debug_guilds=[798358772996243457], allowed_mentions=discord.AllowedMentions(users=True,roles=True,everyone=True))
 
 @bot.event
 async def on_ready():
-    await print(bot.user.name)
+    print(f'{bot.user.name} has connected to Discord!')
 
 # Intitialise command groups
 shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
@@ -68,7 +68,7 @@ async def clear(ctx):
     await ctx.respond('Cleared the shopping list')
 
 @shopping_list.command(description='Print the shopping list')
-async def print(ctx):
+async def show(ctx):
     with open('shopping_list.txt', 'r') as shopping_list:
         data = shopping_list.readlines()
         numbered_list = ""
@@ -84,7 +84,11 @@ async def print(ctx):
 
 @bank_transfer.command(description='Request payment from flat members')
 async def request(ctx, target: discord.abc.Mentionable, amount: float):
-    await ctx.respond(f'Requested **${amount}** from {target.mention}.')
+    mention_str = target.mention
+    if target.id == ctx.guild_id:
+        mention_str = '@everyone'
+        
+    await ctx.respond(f'Requested **${amount}** from {mention_str}.')
 
 # ----------------------------------- #
 #           Error Handling            #
