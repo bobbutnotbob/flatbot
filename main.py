@@ -1,13 +1,16 @@
 import os
 import sys
+import json
 import traceback
 import discord
+import aiosqlite
 from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-bot = discord.Bot(debug_guilds=[798358772996243457], allowed_mentions=discord.AllowedMentions(users=True,roles=True,everyone=True))
+intents = discord.Intents.all()
+bot = discord.Bot(debug_guilds=[798358772996243457], allowed_mentions=discord.AllowedMentions(users=True,roles=True,everyone=True), intents=intents)
 
 @bot.event
 async def on_ready():
@@ -89,6 +92,22 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float):
         mention_str = '@everyone'
         
     await ctx.respond(f'Requested **${amount}** from {mention_str}.')
+
+@bank_transfer.command(description='Testing')
+async def sqltest(ctx):
+    userlist = ctx.guild.members
+    paid_by = [262058288370286593, 271534562008498176]
+    async with aiosqlite.connect('database/database_test.db') as db:
+        await db.execute('PRAGMA foreign_keys = ON;')
+        for user in userlist:
+            print(user.id)
+            await db.execute(f'INSERT INTO Users (UserId) VALUES ({user.id}) ON CONFLICT DO NOTHING')
+        await db.commit()
+    
+        async with db.execute(f'SELECT * FROM Users') as cursor:
+            row = await cursor.fetchall()
+    
+    await ctx.respond(f'Users: {row}')
 
 # ----------------------------------- #
 #           Error Handling            #
