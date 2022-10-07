@@ -93,10 +93,21 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float):
         
     await ctx.respond(f'Requested **${amount}** from {mention_str}.')
 
+@bank_transfer.command(description='Show a summary of outstanding payments between you and another member of the flat')
+async def summary(ctx, target: discord.User):
+    user_id = target.id
+    async with aiosqlite.connect('database/database_test.db') as db:
+        await db.execute('PRAGMA foreign_keys = ON;')
+        async with db.execute(f'SELECT Amount FROM Outstanding WHERE RequestedBy = {ctx.author.id} AND PaidBy NOT LIKE "%{target.id}%"') as cursor:
+            row = await cursor.fetchall()
+
+        amounts = [ amount for (amount,) in row ]
+
+    await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${round(sum(amounts), 2)}**.')
+
 @bank_transfer.command(description='Testing')
 async def sqltest(ctx):
     userlist = ctx.guild.members
-    paid_by = [262058288370286593, 271534562008498176]
     async with aiosqlite.connect('database/database_test.db') as db:
         await db.execute('PRAGMA foreign_keys = ON;')
         for user in userlist:
