@@ -8,13 +8,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+DATABASEDIR = os.getenv('DATABASE_LOCATION')
+GUILD = os.getenv('DISCORD_GUILD')
 
 intents = discord.Intents.all()
-bot = discord.Bot(debug_guilds=[798358772996243457], allowed_mentions=discord.AllowedMentions(users=True,roles=True,everyone=True), intents=intents)
+bot = discord.Bot(debug_guilds=[GUILD], allowed_mentions=discord.AllowedMentions(users=True,roles=True,everyone=True), intents=intents)
 
 @bot.event
 async def on_ready():
     print(f'{bot.user.name} has connected to Discord!')
+    print('----------')
+    
+# Payment buttons
+class PaymentView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Pay", style=discord.ButtonStyle.green, custom_id="pay_button")
+    async def green(self, button: discord.ui.Button, interaction: discord.Interaction):
+        button.label = None
+        button.emoji = "✅"
+        button.disabled = True
+        await interaction.response.edit_message(view=self)
+
+    # Select * From Outstanding Where Id = Message.id
+    # json.dumps('ToPay')
+    # pop(user.id)
+    # json.loads
+    # update record in db
 
 # Intitialise command groups
 shopping_list = bot.create_group('shopping-list', 'Shopping list commands')
@@ -86,17 +107,29 @@ async def show(ctx):
 # -------------------------------------- #
 
 @bank_transfer.command(description='Request payment from flat members')
-async def request(ctx, target: discord.abc.Mentionable, amount: float):
+async def request(ctx, target: discord.abc.Mentionable, amount: float, description = "No description provided"):
     mention_str = target.mention
     if target.id == ctx.guild_id:
         mention_str = '@everyone'
-        
-    await ctx.respond(f'Requested **${amount}** from {mention_str}.')
+    
+    if hasattr(target, 'members'):
+        to_pay = json.dumps([member.id for member in target.members])
+    else:
+        to_pay = json.dumps([target.id])
+    
+    message = await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${round(amount, 2)}\n**Description:** {description}', view=PaymentView())
 
+    async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
+        await db.execute('PRAGMA foreign_keys = ON;')
+        query = f'INSERT INTO Payments (MessageId, Amount, RequestedBy, UnpaidBy) VALUES ({message.id}, {amount}, {ctx.author.id}, "{to_pay}")'
+        print(query)
+        await db.execute(query)
+        await db.commit()
+        
 @bank_transfer.command(description='Show a summary of outstanding payments between you and another member of the flat')
 async def summary(ctx, target: discord.User):
     user_id = target.id
-    async with aiosqlite.connect('database/database_test.db') as db:
+    async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
         await db.execute('PRAGMA foreign_keys = ON;')
         async with db.execute(f'SELECT Amount FROM Outstanding WHERE RequestedBy = {ctx.author.id} AND PaidBy NOT LIKE "%{target.id}%"') as cursor:
             row = await cursor.fetchall()
@@ -105,20 +138,25 @@ async def summary(ctx, target: discord.User):
 
     await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${round(sum(amounts), 2)}**.')
 
-@bank_transfer.command(description='Testing')
-async def sqltest(ctx):
-    userlist = ctx.guild.members
-    async with aiosqlite.connect('database/database_test.db') as db:
+@bank_transfer.command(description='Creates database')
+async def createdb(ctx):
+    async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
         await db.execute('PRAGMA foreign_keys = ON;')
+        with open(DATABASEDIR+'/table_schema.sql') as schema:
+            try:
+                await db.executescript(schema.read())
+            except aiosqlite.Error as err:
+                print(err)
+        userlist = ctx.guild.members
         for user in userlist:
+            if user.bot:
+                continue
+
             print(user.id)
             await db.execute(f'INSERT INTO Users (UserId) VALUES ({user.id}) ON CONFLICT DO NOTHING')
         await db.commit()
     
-        async with db.execute(f'SELECT * FROM Users') as cursor:
-            row = await cursor.fetchall()
-    
-    await ctx.respond(f'Users: {row}')
+    await ctx.respond(f'Updated database')
 
 # ----------------------------------- #
 #           Error Handling            #
