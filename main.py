@@ -25,13 +25,36 @@ class PaymentView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Pay", style=discord.ButtonStyle.green, custom_id="pay_button")
-    async def green(self, button: discord.ui.Button, interaction: discord.Interaction):
-        button.label = None
-        button.emoji = "✅"
-        button.disabled = True
-        await interaction.response.edit_message(view=self)
+    async def pay(self, button: discord.ui.Button, interaction: discord.Interaction):
+        async with aiosqlite.connect(f'{DATABASEDIR}/{interaction.guild.id}.db') as db:
+            message = await db.execute_fetchall(f'SELECT * FROM Payments WHERE MessageId = {interaction.message.id}')
 
-    # Select * From Outstanding Where Id = Message.id
+        await interaction.response.send_message(f'ID of message is {interaction.message.id}', ephemeral=True)
+
+    @discord.ui.button(label="Delete", style=discord.ButtonStyle.red, custom_id="delete_button")
+    async def delete(self, button: discord.ui.Button, interaction: discord.Interaction):
+        async with aiosqlite.connect(f'{DATABASEDIR}/{interaction.guild.id}.db') as db:
+            message = await db.execute_fetchall(f'SELECT * FROM Payments WHERE MessageId = {interaction.message.id}')
+            if not message:
+                message = None
+            else:
+                message = message[0]
+            
+            if message == None:
+                response = 'Unable to find payment in database'
+
+            elif message[3] == interaction.user.id:
+                await db.execute(f'DELETE FROM Payments WHERE MessageId = {interaction.message.id}')
+                await interaction.message.delete()
+                response = 'Successfully deleted payment'
+                await db.commit()
+
+            else:
+                response = 'You do not have permission to delete this payment'
+        
+        await interaction.response.send_message(response, ephemeral=True)
+    
+    # Select * From Outstanding Where Id = interaction.Message.id
     # json.dumps('ToPay')
     # pop(user.id)
     # json.loads
@@ -108,7 +131,9 @@ async def show(ctx):
 
 @bank_transfer.command(description='Request payment from flat members')
 async def request(ctx, target: discord.abc.Mentionable, amount: float, description = "No description provided"):
+    amount = round(amount, 2)
     mention_str = target.mention
+
     if target.id == ctx.guild_id:
         mention_str = '@everyone'
     
@@ -117,7 +142,8 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float, descripti
     else:
         to_pay = json.dumps([target.id])
     
-    message = await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${round(amount, 2)}\n**Description:** {description}', view=PaymentView())
+    await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${amount}\n**Description:** {description}', view=PaymentView())
+    message = await ctx.interaction.original_message()
 
     async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
         await db.execute('PRAGMA foreign_keys = ON;')
@@ -136,7 +162,7 @@ async def summary(ctx, target: discord.User):
 
         amounts = [ amount for (amount,) in row ]
 
-    await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${round(sum(amounts), 2)}**.')
+    await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${sum(amounts)}**.')
 
 @bank_transfer.command(description='Creates database')
 async def createdb(ctx):
