@@ -26,31 +26,52 @@ class PaymentView(discord.ui.View):
 
     @discord.ui.button(label="Pay", style=discord.ButtonStyle.green, custom_id="pay_button")
     async def pay(self, button: discord.ui.Button, interaction: discord.Interaction):
-        async with aiosqlite.connect(f'{DATABASEDIR}/{interaction.guild.id}.db') as db:
-            message = await db.execute_fetchall(f'SELECT * FROM Payments WHERE MessageId = {interaction.message.id}')
+        user_id = interaction.user.id
+        message_id = interaction.message.id
 
-        await interaction.response.send_message(f'ID of message is {interaction.message.id}', ephemeral=True)
+        async with aiosqlite.connect(f'{DATABASEDIR}/{interaction.guild.id}.db') as db:
+            async with db.execute(f'SELECT RequestedFrom, UnpaidBy FROM Payments WHERE MessageId = {message_id}') as cursor:
+                message = await cursor.fetchone()
+                print(message)
+                if message == None:
+                    await interaction.response.send_message('Unable to find payment in database', ephemeral=True)
+                    return
+                
+                requested_from = json.loads(message[0])
+                unpaid_by = json.loads(message[1])
+                
+                if user_id not in requested_from:
+                    response = 'You are not required to pay this'
+                
+                elif user_id not in unpaid_by:
+                    response = 'You have already payed this'
+
+                else:
+                    unpaid_by.remove(user_id)
+                    unpaid_by = json.dumps(unpaid_by)
+                    await cursor.execute(f'UPDATE Payments SET UnpaidBy = "{unpaid_by}" WHERE MessageId = {message_id}')
+                    await db.commit()
+                    response = 'Successfully updated payment'
+                
+        await interaction.response.send_message(response, ephemeral=True)
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.red, custom_id="delete_button")
     async def delete(self, button: discord.ui.Button, interaction: discord.Interaction):
         async with aiosqlite.connect(f'{DATABASEDIR}/{interaction.guild.id}.db') as db:
-            message = await db.execute_fetchall(f'SELECT * FROM Payments WHERE MessageId = {interaction.message.id}')
-            if not message:
-                message = None
-            else:
-                message = message[0]
-            
-            if message == None:
-                response = 'Unable to find payment in database'
+            async with db.execute(f'SELECT * FROM Payments WHERE MessageId = {interaction.message.id}') as cursor:
+                message = await cursor.fetchone()
 
-            elif message[3] == interaction.user.id:
-                await db.execute(f'DELETE FROM Payments WHERE MessageId = {interaction.message.id}')
-                await interaction.message.delete()
-                response = 'Successfully deleted payment'
-                await db.commit()
+                if message == None:
+                    response = 'Unable to find payment in database'
 
-            else:
-                response = 'You do not have permission to delete this payment'
+                elif message[3] == interaction.user.id:
+                    await cursor.execute(f'DELETE FROM Payments WHERE MessageId = {interaction.message.id}')
+                    await db.commit()
+                    await interaction.message.delete()
+                    response = 'Successfully deleted payment'
+
+                else:
+                    response = 'You do not have permission to delete this payment'
         
         await interaction.response.send_message(response, ephemeral=True)
     
@@ -67,10 +88,6 @@ bank_transfer = bot.create_group('bank-transfer', 'Commands for managing bank tr
 # -------------------------------------- #
 #        Shopping List Commands          #
 # -------------------------------------- #
-
-@shopping_list.command(description='Display bot help')
-async def help(ctx):
-    await ctx.respond('I don\'t work for whatever reason')
 
 @shopping_list.command(description='Add an item to the shopping list')
 async def add(ctx, *, items):
@@ -138,17 +155,24 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float, descripti
         mention_str = '@everyone'
     
     if hasattr(target, 'members'):
-        to_pay = json.dumps([member.id for member in target.members])
+        to_pay = [member.id for member in target.members]
     else:
-        to_pay = json.dumps([target.id])
+        to_pay = [target.id]
     
-    await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${amount}\n**Description:** {description}', view=PaymentView())
-    message = await ctx.interaction.original_message()
-
     async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
-        await db.execute('PRAGMA foreign_keys = ON;')
-        query = f'INSERT INTO Payments (MessageId, Amount, RequestedBy, UnpaidBy) VALUES ({message.id}, {amount}, {ctx.author.id}, "{to_pay}")'
-        print(query)
+        async with db.execute('SELECT UserId FROM Users') as cursor:
+            userlist = await cursor.fetchall()
+            userlist = [user for (user,) in userlist]
+            for user in to_pay:
+                if user not in userlist:
+                    print('Gah!')
+                    await ctx.respond(f'You can\'t request a payment from <@{user}> because they do not have an entry in the database.', ephemeral=True)
+                    return
+
+        await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${amount}\n**Description:** {description}', view=PaymentView())
+        message = await ctx.interaction.original_message()
+        await db.execute('PRAGMA foreign_keys = ON')
+        query = f'INSERT INTO Payments VALUES ({message.id}, {amount}, "{description}", {ctx.author.id}, "{to_pay}", "{to_pay}")'
         await db.execute(query)
         await db.commit()
         
@@ -156,23 +180,20 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float, descripti
 async def summary(ctx, target: discord.User):
     user_id = target.id
     async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
-        await db.execute('PRAGMA foreign_keys = ON;')
         async with db.execute(f'SELECT Amount FROM Outstanding WHERE RequestedBy = {ctx.author.id} AND PaidBy NOT LIKE "%{target.id}%"') as cursor:
             row = await cursor.fetchall()
 
-        amounts = [ amount for (amount,) in row ]
+        amounts = [amount for (amount,) in row]
 
     await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${sum(amounts)}**.')
 
 @bank_transfer.command(description='Creates database')
 async def createdb(ctx):
     async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
-        await db.execute('PRAGMA foreign_keys = ON;')
+        await db.execute('PRAGMA foreign_keys = ON')
         with open(DATABASEDIR+'/table_schema.sql') as schema:
-            try:
-                await db.executescript(schema.read())
-            except aiosqlite.Error as err:
-                print(err)
+            await db.executescript(schema.read())
+
         userlist = ctx.guild.members
         for user in userlist:
             if user.bot:
@@ -180,6 +201,7 @@ async def createdb(ctx):
 
             print(user.id)
             await db.execute(f'INSERT INTO Users (UserId) VALUES ({user.id}) ON CONFLICT DO NOTHING')
+
         await db.commit()
     
     await ctx.respond(f'Updated database')
