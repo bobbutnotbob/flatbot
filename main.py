@@ -165,9 +165,14 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float, descripti
             userlist = [user for (user,) in userlist]
             for user in to_pay:
                 if user not in userlist:
-                    print('Gah!')
-                    await ctx.respond(f'You can\'t request a payment from <@{user}> because they do not have an entry in the database.', ephemeral=True)
-                    return
+                    if len(userlist) == 1:
+                        print('Gah!')
+                        await ctx.respond(f'You can\'t request a payment from <@{user}> because they do not have an entry in the database.', ephemeral=True)
+                        return
+                    
+                    else:
+                        to_pay.remove(user)
+                        print(f'Failed adding user with ID {user} as they are not in the database')
 
         await ctx.respond(f'**To:** {ctx.author.mention}\n**From:** {mention_str}\n**Amount:** ${amount}\n**Description:** {description}', view=PaymentView())
         message = await ctx.interaction.original_message()
@@ -177,15 +182,24 @@ async def request(ctx, target: discord.abc.Mentionable, amount: float, descripti
         await db.commit()
         
 @bank_transfer.command(description='Show a summary of outstanding payments between you and another member of the flat')
+@discord.option('target', default = None, required = False)
 async def summary(ctx, target: discord.User):
-    user_id = target.id
+    if target == None:
+        userlist = [user for user in ctx.guild.members if not user.bot]
+        userlist.remove(ctx.author)
+
+    else:
+        userlist = [target]
+
     async with aiosqlite.connect(f'{DATABASEDIR}/{ctx.guild.id}.db') as db:
-        async with db.execute(f'SELECT Amount FROM Outstanding WHERE RequestedBy = {ctx.author.id} AND PaidBy NOT LIKE "%{target.id}%"') as cursor:
-            row = await cursor.fetchall()
+        response = ''
+        for user in userlist:
+            async with db.execute(f'SELECT Amount FROM Payments WHERE RequestedBy = {ctx.author.id} AND UnpaidBy LIKE "%{user.id}%"') as cursor:
+                row = await cursor.fetchall()
+                amounts = [amount for (amount,) in row]
+                response += f'**{user.name}** has **{len(amounts)}** outstanding payments to you, totalling **${sum(amounts)}**.\n'
 
-        amounts = [amount for (amount,) in row]
-
-    await ctx.respond(f'**{target.name}** has **{len(amounts)}** outstanding payments to you, totalling **${sum(amounts)}**.')
+    await ctx.respond(response)
 
 @bank_transfer.command(description='Creates database')
 async def createdb(ctx):
