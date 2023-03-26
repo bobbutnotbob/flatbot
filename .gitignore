@@ -1,3 +1,5 @@
 .env
 shopping_list.txt
 .discordenv
+database/*.db
+*.pyc
